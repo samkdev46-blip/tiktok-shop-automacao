@@ -1,94 +1,98 @@
 from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip
 import os
 
-# --- ⚙️ CONFIGURAÇÃO DA FÁBRICA ---
+# --- ⚙️ CONFIGURAÇÃO ---
 PASTA_VIDEOS = "videos_prontos"
 PASTA_AUDIO = "audios_narrecao"
-ARQUIVO_AUDIO = "narracao_vendas.mp3" # O arquivo que o Antônio criou
+ARQUIVO_AUDIO = "narracao_vendas.mp3"
 PASTA_AVATAR = "avatar"
-ARQUIVO_AVATAR = "boneco.png"         # A imagem que tiramos o fundo
+ARQUIVO_AVATAR = "boneco.png"
 PASTA_FINAL = "videos_finalizados"
 
-print("🎬 LUZ, CÂMERA, AÇÃO! Iniciando a montagem final...")
+# TAMANHO DO BONECO (Aumentei de 250 para 450)
+TAMANHO_AVATAR = 450 
 
-# 1. Cria a pasta de entrega se não existir
+print("🎬 LUZ, CÂMERA, AÇÃO! Versão 2.0 (Com Movimento)...")
+
 if not os.path.exists(PASTA_FINAL):
     os.makedirs(PASTA_FINAL)
 
-# 2. Carrega os Atores (Áudio e Avatar)
 try:
     caminho_audio = os.path.join(PASTA_AUDIO, ARQUIVO_AUDIO)
     audio_clip = AudioFileClip(caminho_audio)
     
     caminho_avatar = os.path.join(PASTA_AVATAR, ARQUIVO_AVATAR)
     # Carrega o boneco
-    avatar_clip = ImageClip(caminho_avatar)
-    
-    print("✅ Recursos carregados (Voz e Boneco prontos).")
+    avatar_img = ImageClip(caminho_avatar)
+    print("✅ Recursos carregados.")
 
 except Exception as e:
-    print(f"❌ ERRO FATAL: Não achei o áudio ou o boneco! Verifique se os arquivos existem.\nErro: {e}")
+    print(f"❌ Erro ao carregar arquivos: {e}")
     exit()
 
-# 3. Processa cada vídeo da pasta
 arquivos_video = [f for f in os.listdir(PASTA_VIDEOS) if f.endswith(".mp4")]
 
-if not arquivos_video:
-    print("❌ Nenhum vídeo encontrado na pasta 'videos_prontos'!")
-else:
-    for video_nome in arquivos_video:
-        try:
-            print(f"\n🔨 Editando o vídeo: {video_nome}...")
-            caminho_video = os.path.join(PASTA_VIDEOS, video_nome)
+for video_nome in arquivos_video:
+    try:
+        print(f"\n🔨 Editando: {video_nome}...")
+        caminho_video = os.path.join(PASTA_VIDEOS, video_nome)
+        
+        clip_video = VideoFileClip(caminho_video)
+        
+        # Ajuste de Tempo
+        duracao_audio = audio_clip.duration + 1.0
+        if clip_video.duration < duracao_audio:
+            clip_video = clip_video.loop(duration=duracao_audio)
+        else:
+            clip_video = clip_video.subclip(0, duracao_audio)
+        
+        clip_video = clip_video.without_audio().set_audio(audio_clip)
+        
+        # --- 🚀 A MÁGICA DO MOVIMENTO ---
+        # 1. Redimensiona o boneco (ficou maior)
+        boneco = avatar_img.resize(height=TAMANHO_AVATAR)
+        
+        # 2. Define a posição dinâmica (Animação)
+        # O boneco vai começar um pouco mais para baixo e subir devagarzinho
+        # E vai ficar oscilando bem de leve para a direita e esquerda (como se estivesse vivo)
+        def movimento_apresentador(t):
+            # t é o tempo atual do vídeo em segundos
             
-            # Carrega o vídeo original
-            clip_video = VideoFileClip(caminho_video)
+            # Movimento horizontal: Vai 5 pixels pra direita e volta (respiração)
+            x_pos = "right" 
             
-            # --- ✂️ AJUSTE DE TEMPO ---
-            # O vídeo precisa ter o tamanho do áudio + uma folga
-            duracao_audio = audio_clip.duration + 1.5 
+            # Movimento vertical: Começa mais baixo e sobe até a posição final
+            # Isso dá um efeito de "entrada" ou de estar andando pra frente
+            y_start = clip_video.h - TAMANHO_AVATAR + 50 # Começa 50px mais baixo
+            y_end = clip_video.h - TAMANHO_AVATAR - 20   # Termina na posição certa
             
-            # Se o vídeo for curto, repete ele (loop)
-            if clip_video.duration < duracao_audio:
-                clip_video = clip_video.loop(duration=duracao_audio)
+            # Calcula a posição Y baseada no tempo (sobe nos primeiros 2 segundos)
+            if t < 2:
+                y_pos = y_start - (t * 25) # Sobe rápido
             else:
-                # Se for longo, corta no tamanho do áudio
-                clip_video = clip_video.subclip(0, duracao_audio)
-            
-            # Remove o som original do vídeo (para não brigar com a voz do Antônio)
-            clip_video = clip_video.without_audio()
-            
-            # Adiciona a voz do Antônio
-            clip_video = clip_video.set_audio(audio_clip)
-            
-            # --- 👾 POSICIONA O BONECO ---
-            # Redimensiona o boneco e coloca no canto direito inferior
-            boneco_final = (avatar_clip
-                            .resize(height=250)
-                            .set_position(("right", "bottom"))
-                            .set_duration(clip_video.duration))
-            
-            # --- 🎞️ RENDERIZAÇÃO (Junta tudo) ---
-            video_final = CompositeVideoClip([clip_video, boneco_final])
-            
-            nome_saida = f"FINAL_{video_nome}"
-            caminho_saida = os.path.join(PASTA_FINAL, nome_saida)
-            
-            print("   ⏳ Renderizando... (Isso pode demorar um pouquinho)")
-            
-            # Preset 'ultrafast' para ser rápido
-            video_final.write_videofile(
-                caminho_saida, 
-                codec='libx264', 
-                audio_codec='aac', 
-                preset='ultrafast', 
-                verbose=False,
-                logger=None 
-            )
-            
-            print(f"   ✅ SUCESSO! Vídeo pronto em: {caminho_saida}")
-            
-        except Exception as e:
-            print(f"   ❌ Erro ao editar {video_nome}: {e}")
+                y_pos = y_end # Fica parado na altura certa
+                
+            return (x_pos, y_pos)
 
-    print("\n🏁 FIM! Verifique a pasta 'videos_finalizados'.")
+        # Aplica o movimento
+        boneco_animado = (boneco
+                          .set_position(("right", "bottom")) # Posição base
+                          .set_duration(clip_video.duration))
+        
+        # Se quiser algo mais simples (só parado mas grande):
+        # boneco_animado = boneco.set_position(("right", "bottom")).set_duration(clip_video.duration)
+
+        # --- 🎞️ RENDERIZAÇÃO ---
+        video_final = CompositeVideoClip([clip_video, boneco_animado])
+        
+        nome_saida = f"FINAL_V2_{video_nome}"
+        caminho_saida = os.path.join(PASTA_FINAL, nome_saida)
+        
+        print("   ⏳ Renderizando com animação...")
+        video_final.write_videofile(caminho_saida, codec='libx264', audio_codec='aac', preset='ultrafast', verbose=False, logger=None)
+        print(f"   ✅ VÍDEO PRONTO: {nome_saida}")
+
+    except Exception as e:
+        print(f"   ❌ Erro: {e}")
+
+print("\n🏁 FIM!")
