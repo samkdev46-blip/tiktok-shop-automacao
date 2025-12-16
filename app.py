@@ -15,12 +15,12 @@ import edge_tts
 import asyncio
 
 # --- 🎨 CONFIGURAÇÃO VISUAL ---
-st.set_page_config(page_title="Fábrica de Virais 5.2 (Memória Fixa)", page_icon="🧠", layout="wide")
+st.set_page_config(page_title="Fábrica de Virais 6.0 (Cookies)", page_icon="🍪", layout="wide")
 
-st.title("🧠 Fábrica de Virais (Correção de Memória)")
+st.title("🍪 Fábrica de Virais (Modo Desbloqueio)")
 st.markdown("---")
 
-# --- 🧠 INICIALIZAR MEMÓRIA (SESSION STATE) ---
+# --- 🧠 MEMÓRIA ---
 if 'audio_gerado_path' not in st.session_state:
     st.session_state['audio_gerado_path'] = None
 
@@ -42,165 +42,145 @@ def processar_video_viral(caminho_video_bruto, caminho_audio, caminho_avatar):
 
             clip_video = clip_video.without_audio().set_audio(audio_clip)
 
-            # 📏 Formato Vertical
+            # 📏 Vertical
             if clip_video.w > clip_video.h:
-                st.write("⚠️ Ajustando para Vertical...")
                 clip_video = clip_video.resize(height=1920)
                 clip_video = clip_video.crop(x1=clip_video.w/2 - 540, y1=0, width=1080, height=1920)
 
-            # 👾 Avatar Animado
-            st.write("2️⃣ Adicionando Avatar...")
+            # 👾 Avatar
             TAMANHO_AVATAR = 450
             boneco = avatar_img.resize(height=TAMANHO_AVATAR)
 
             def movimento_apresentador(t):
                 y_start = clip_video.h - TAMANHO_AVATAR + 100
                 y_end = clip_video.h - TAMANHO_AVATAR - 50
-                if t < 1.5:
-                    y_pos = y_start - (t * (100/1.5))
-                else:
-                    y_pos = y_end
-                return ("right", y_pos)
+                if t < 1.5: return ("right", y_start - (t * (100/1.5)))
+                else: return ("right", y_end)
 
-            boneco_animado = (boneco
-                            .set_position(movimento_apresentador)
-                            .set_duration(clip_video.duration))
-
-            # Renderiza
-            st.write("3️⃣ Renderizando...")
-            video_final = CompositeVideoClip([clip_video, boneco_animado])
+            boneco_animado = (boneco.set_position(movimento_apresentador).set_duration(clip_video.duration))
             
             output_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4").name
-            
-            video_final.write_videofile(
+            CompositeVideoClip([clip_video, boneco_animado]).write_videofile(
                 output_path, codec='libx264', audio_codec='aac', preset='ultrafast', logger=None
             )
             
             status.update(label="✅ Pronto!", state="complete", expanded=False)
             return output_path
-
         except Exception as e:
             st.error(f"❌ Erro: {e}")
             return None
 
-# --- 🗣️ FUNÇÃO ASYNC VOZ ---
+# --- 🗣️ VOZ ---
 async def gerar_voz_antonio(texto, arquivo_saida):
-    comunicador = edge_tts.Communicate(texto, "pt-BR-AntonioNeural")
-    await comunicador.save(arquivo_saida)
+    await edge_tts.Communicate(texto, "pt-BR-AntonioNeural").save(arquivo_saida)
 
-# --- 📂 BARRA LATERAL ---
-st.sidebar.header("1. Configuração do Avatar 👾")
-tipo_avatar = st.sidebar.radio("Avatar:", ["Padrão", "Upload"], horizontal=True)
-
-arquivo_avatar_final = None # Variável para guardar o caminho decidido
-
-if tipo_avatar == "Padrão":
-    if os.path.exists("avatar/boneco.png"):
-        arquivo_avatar_final = "avatar/boneco.png"
-        st.sidebar.success("✅ Avatar Padrão OK")
+# --- 🍪 CONFIGURAÇÃO DO CAÇADOR (A MÁGICA) ---
+def get_ydl_opts(download=False, output_path=None):
+    # Procura o arquivo cookies.txt na pasta
+    usar_cookies = 'cookies.txt' if os.path.exists('cookies.txt') else None
+    
+    opts = {
+        'quiet': True, 
+        'ignoreerrors': True, 
+        'no_warnings': True,
+        'cookiefile': usar_cookies # <--- AQUI ESTA O SEGREDO
+    }
+    
+    if download:
+        opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
+        opts['outtmpl'] = output_path
     else:
-        st.sidebar.error("❌ Faltando 'avatar/boneco.png'")
-else:
-    uploaded_avatar = st.sidebar.file_uploader("Subir Imagem", type=["png"])
-    if uploaded_avatar:
-        tfile_av = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-        tfile_av.write(uploaded_avatar.read())
-        arquivo_avatar_final = tfile_av.name
+        opts['default_search'] = 'ytsearch5'
+    return opts
+
+# --- 📂 INTERFACE ---
+st.sidebar.header("Avatar & Áudio")
+tipo_avatar = st.sidebar.radio("Avatar:", ["Padrão", "Upload"], horizontal=True)
+arquivo_avatar_final = "avatar/boneco.png" if tipo_avatar == "Padrão" and os.path.exists("avatar/boneco.png") else None
+
+if tipo_avatar == "Upload":
+    up_av = st.sidebar.file_uploader("Img Avatar", type=["png"])
+    if up_av:
+        t = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+        t.write(up_av.read())
+        arquivo_avatar_final = t.name
 
 st.sidebar.markdown("---")
-st.sidebar.header("2. Configuração do Áudio 🔊")
-tipo_audio = st.sidebar.radio("Áudio:", ["Padrão", "Upload", "Voz IA (Antônio)"])
+tipo_audio = st.sidebar.radio("Áudio:", ["Padrão", "Upload", "Voz IA"])
+arquivo_audio_final = "audios_narrecao/narracao_vendas.mp3" if tipo_audio == "Padrão" and os.path.exists("audios_narrecao/narracao_vendas.mp3") else None
 
-arquivo_audio_final = None # Variável para guardar o caminho decidido
+if tipo_audio == "Upload":
+    up_au = st.sidebar.file_uploader("Audio MP3", type=["mp3"])
+    if up_au:
+        t = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+        t.write(up_au.read())
+        arquivo_audio_final = t.name
 
-if tipo_audio == "Padrão":
-    if os.path.exists("audios_narrecao/narracao_vendas.mp3"):
-        arquivo_audio_final = "audios_narrecao/narracao_vendas.mp3"
-        st.sidebar.success("✅ Áudio Padrão OK")
-    
-elif tipo_audio == "Upload":
-    uploaded_audio = st.sidebar.file_uploader("Subir MP3", type=["mp3"])
-    if uploaded_audio:
-        tfile_au = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-        tfile_au.write(uploaded_audio.read())
-        arquivo_audio_final = tfile_au.name
-
-elif tipo_audio == "Voz IA (Antônio)":
-    texto_usuario = st.sidebar.text_area("Texto do Narrador:", "Esse produto é incrível!")
-    
-    # Botão para gerar
+if tipo_audio == "Voz IA":
+    txt = st.sidebar.text_area("Texto:", "Produto top!")
     if st.sidebar.button("🎙️ Gerar Voz"):
-        if texto_usuario:
-            try:
-                tfile_tts = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-                asyncio.run(gerar_voz_antonio(texto_usuario, tfile_tts.name))
-                # SALVA NA MEMÓRIA PERMANENTE
-                st.session_state['audio_gerado_path'] = tfile_tts.name 
-                st.rerun() # Recarrega para atualizar o player
-            except Exception as e:
-                st.sidebar.error(f"Erro: {e}")
-
-    # Verifica se já existe áudio na memória
+        try:
+            t = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+            asyncio.run(gerar_voz_antonio(txt, t.name))
+            st.session_state['audio_gerado_path'] = t.name
+            st.rerun()
+        except Exception as e: st.error(e)
+    
     if st.session_state['audio_gerado_path']:
         st.sidebar.audio(st.session_state['audio_gerado_path'])
-        st.sidebar.success("✅ Áudio Gerado e Salvo!")
         arquivo_audio_final = st.session_state['audio_gerado_path']
-    else:
-        st.sidebar.warning("⚠️ Clique em 'Gerar Voz' acima.")
 
-# --- 🖥️ ABAS ---
-aba_manual, aba_auto = st.tabs(["📤 Upload Manual", "🎰 Busca Aleatória"])
+# --- ABAS ---
+aba_manual, aba_auto = st.tabs(["Manual", "Automático (Cookies 🍪)"])
 
 with aba_manual:
-    st.header("Manual")
-    video_upload = st.file_uploader("Vídeo MP4", type=["mp4"])
-    if st.button("🚀 Processar Manual"):
-        if video_upload and arquivo_avatar_final and arquivo_audio_final:
-            tfile_video = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") 
-            tfile_video.write(video_upload.read())
-            resultado = processar_video_viral(tfile_video.name, arquivo_audio_final, arquivo_avatar_final)
-            if resultado:
-                st.video(resultado)
-        else:
-            st.error("⚠️ Faltando Arquivos! Verifique Áudio e Avatar na esquerda.")
+    v_up = st.file_uploader("Vídeo", type=["mp4"])
+    if st.button("🚀 Processar") and v_up and arquivo_avatar_final and arquivo_audio_final:
+        t = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+        t.write(v_up.read())
+        res = processar_video_viral(t.name, arquivo_audio_final, arquivo_avatar_final)
+        if res: st.video(res)
 
 with aba_auto:
-    st.header("Automático")
+    st.header("Caçador com Cookies")
+    
+    # Aviso visual se o cookie foi carregado
+    if os.path.exists('cookies.txt'):
+        st.success("🍪 Arquivo de Cookies detectado! Modo desbloqueado ativo.", icon="✅")
+    else:
+        st.warning("⚠️ 'cookies.txt' não encontrado. O YouTube pode bloquear o download.", icon="🚨")
+
     termo = st.text_input("Produto")
-    if st.button("🎲 Sortear e Criar"):
-        # Agora checamos as variáveis finais, que buscam da memória se necessário
-        if arquivo_avatar_final and arquivo_audio_final and termo:
-            termo_opt = f"{termo} review"
-            st.info(f"🔎 Buscando: {termo_opt}")
+    if st.button("🎲 Sortear") and termo and arquivo_avatar_final and arquivo_audio_final:
+        st.info(f"🔎 Buscando: {termo} review...")
+        
+        if not os.path.exists("downloads"): os.makedirs("downloads")
+        
+        try:
+            # 1. Busca
+            lista = []
+            with yt_dlp.YoutubeDL(get_ydl_opts(download=False)) as ydl:
+                info = ydl.extract_info(f"{termo} review", download=False)
+                if 'entries' in info:
+                    for v in info['entries']:
+                        if v and v.get('duration') and v['duration'] < 180:
+                            lista.append(v)
             
-            if not os.path.exists("downloads"): os.makedirs("downloads")
-            
-            try:
-                ydl_opts = {'default_search': 'ytsearch5', 'quiet': True, 'ignoreerrors': True, 'no_warnings': True}
-                lista = []
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(termo_opt, download=False)
-                    if 'entries' in info:
-                        for v in info['entries']:
-                            if v and v.get('duration') and v['duration'] < 180:
-                                lista.append(v)
+            # 2. Download e Processamento
+            if lista:
+                escolhido = random.choice(lista)
+                st.success(f"Vídeo: {escolhido.get('title')}")
+                path_down = f"downloads/{escolhido['id']}.mp4"
                 
-                if lista:
-                    escolhido = random.choice(lista)
-                    st.success(f"Vídeo: {escolhido.get('title')}")
-                    v_url = escolhido['webpage_url']
-                    path_down = f"downloads/{escolhido['id']}.mp4"
-                    
-                    if not os.path.exists(path_down):
-                        with yt_dlp.YoutubeDL({'format':'best[ext=mp4]', 'outtmpl':path_down, 'quiet':True}) as ydl:
-                            ydl.download([v_url])
-                            
-                    if os.path.exists(path_down):
-                        res = processar_video_viral(path_down, arquivo_audio_final, arquivo_avatar_final)
-                        if res: st.video(res)
-                else:
-                    st.warning("Nenhum vídeo curto achado.")
-            except Exception as e:
-                st.error(f"Erro: {e}")
-        else:
-            st.error("⚠️ Faltando Avatar ou Áudio (Gere a voz primeiro!)")
+                if not os.path.exists(path_down):
+                    # Tenta baixar usando os cookies configurados
+                    with yt_dlp.YoutubeDL(get_ydl_opts(download=True, output_path=path_down)) as ydl:
+                        ydl.download([escolhido['webpage_url']])
+                
+                if os.path.exists(path_down):
+                    res = processar_video_viral(path_down, arquivo_audio_final, arquivo_avatar_final)
+                    if res: st.video(res)
+            else:
+                st.warning("Nada encontrado.")
+        except Exception as e:
+            st.error(f"Erro no download: {e}")
