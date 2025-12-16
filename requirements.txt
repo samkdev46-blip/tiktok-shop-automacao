@@ -1,0 +1,5 @@
+streamlit
+moviepy
+yt-dlp
+edge-tts
+imageio-ffmpeg
