@@ -1,7 +1,13 @@
 streamlit
 moviepy==1.0.3
-yt-dlp
 edge-tts
+imageio
 imageio-ffmpeg
-imageio==2.31.1
-decorator==4.4.2
+numpy<2.0.0
+requests
+decorator
+proglog
+tqdm
+pillow
+yt-dlp
+watchdog

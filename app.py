@@ -1,186 +1,153 @@
 import streamlit as st
-import PIL.Image 
-
-# --- 🚑 VACINA ANTI-ERRO ---
-if not hasattr(PIL.Image, 'ANTIALIAS'):
-    PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
-# ---------------------------
-
-from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip
-import tempfile
 import os
-import yt_dlp
-import random
-import edge_tts
-import asyncio
+import subprocess
+import json
+import time
 
-# --- 🎨 CONFIGURAÇÃO VISUAL ---
-st.set_page_config(page_title="Fábrica de Virais 6.0 (Cookies)", page_icon="🍪", layout="wide")
+# --- Configurações da Página ---
+st.set_page_config(
+    page_title="Fábrica de Vídeos Samk", 
+    page_icon="🏭",
+    layout="centered"
+)
 
-st.title("🍪 Fábrica de Virais (Modo Desbloqueio)")
-st.markdown("---")
+st.title("🏭 Fábrica de Vídeos 9.5")
+st.write("Controle total: Texto, Volume e Música.")
 
-# --- 🧠 MEMÓRIA ---
-if 'audio_gerado_path' not in st.session_state:
-    st.session_state['audio_gerado_path'] = None
+# --- BOTÃO PARA ATUALIZAR A LISTA (Sincronia com Telegram) ---
+if st.button("🔄 Verificar se chegaram vídeos novos"):
+    st.rerun()
 
-# --- ⚙️ FUNÇÃO DE PROCESSAMENTO ---
-def processar_video_viral(caminho_video_bruto, caminho_audio, caminho_avatar):
-    with st.status("🏗️ Processando vídeo...", expanded=True) as status:
-        try:
-            st.write("1️⃣ Carregando arquivos...")
-            clip_video = VideoFileClip(caminho_video_bruto)
-            audio_clip = AudioFileClip(caminho_audio)
-            avatar_img = ImageClip(caminho_avatar)
+st.divider()
 
-            # ✂️ Ajuste de Tempo
-            duracao_final = audio_clip.duration + 1.0 
-            if clip_video.duration < duracao_final:
-                clip_video = clip_video.loop(duration=duracao_final)
-            else:
-                clip_video = clip_video.subclip(0, duracao_final)
+# --- 1. ROTEIRO ---
+st.header("1️⃣ Roteiro (Voz do Antônio)")
+texto_padrao = """Para tudo o que você está fazendo e olha isso! 
+Eu encontrei o produto mais incrível do TikTok Shop e você precisa ver.
+Ele resolve aquele problema chato do dia a dia em segundos.
+O link com desconto exclusivo está na minha bio. 
+Corre antes que acabe o estoque!"""
 
-            clip_video = clip_video.without_audio().set_audio(audio_clip)
+novo_roteiro = st.text_area("Texto do Locutor:", value=texto_padrao, height=120)
 
-            # 📏 Vertical
-            if clip_video.w > clip_video.h:
-                clip_video = clip_video.resize(height=1920)
-                clip_video = clip_video.crop(x1=clip_video.w/2 - 540, y1=0, width=1080, height=1920)
+st.divider()
 
-            # 👾 Avatar
-            TAMANHO_AVATAR = 450
-            boneco = avatar_img.resize(height=TAMANHO_AVATAR)
+# --- 2. CONFIGURAÇÃO DE ÁUDIO ---
+st.header("2️⃣ Configuração de Música")
 
-            def movimento_apresentador(t):
-                y_start = clip_video.h - TAMANHO_AVATAR + 100
-                y_end = clip_video.h - TAMANHO_AVATAR - 50
-                if t < 1.5: return ("right", y_start - (t * (100/1.5)))
-                else: return ("right", y_end)
+col1, col2 = st.columns(2)
 
-            boneco_animado = (boneco.set_position(movimento_apresentador).set_duration(clip_video.duration))
-            
-            output_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4").name
-            CompositeVideoClip([clip_video, boneco_animado]).write_videofile(
-                output_path, codec='libx264', audio_codec='aac', preset='ultrafast', logger=None
-            )
-            
-            status.update(label="✅ Pronto!", state="complete", expanded=False)
-            return output_path
-        except Exception as e:
-            st.error(f"❌ Erro: {e}")
-            return None
+with col1:
+    # Barrinha de Volume (0 a 100)
+    vol_porcentagem = st.slider("🔊 Volume da Música (%)", 0, 100, 15)
+    volume_real = vol_porcentagem / 100.0 
 
-# --- 🗣️ VOZ ---
-async def gerar_voz_antonio(texto, arquivo_saida):
-    await edge_tts.Communicate(texto, "pt-BR-AntonioNeural").save(arquivo_saida)
+with col2:
+    # Escolha da Origem
+    modo_musica = st.radio("Origem da Música:", ["📂 Aleatória (Da Pasta)", "📤 Upload (Arquivo Único)"])
 
-# --- 🍪 CONFIGURAÇÃO DO CAÇADOR (A MÁGICA) ---
-def get_ydl_opts(download=False, output_path=None):
-    # Procura o arquivo cookies.txt na pasta
-    usar_cookies = 'cookies.txt' if os.path.exists('cookies.txt') else None
-    
-    opts = {
-        'quiet': True, 
-        'ignoreerrors': True, 
-        'no_warnings': True,
-        'cookiefile': usar_cookies # <--- AQUI ESTA O SEGREDO
-    }
-    
-    if download:
-        opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
-        opts['outtmpl'] = output_path
+caminho_musica_temp = None
+
+# Lógica de Upload
+if modo_musica == "📤 Upload (Arquivo Único)":
+    uploaded_file = st.file_uploader("Arraste seu MP3 aqui", type=["mp3", "wav"])
+    if uploaded_file is not None:
+        caminho_musica_temp = "temp_music_upload.mp3"
+        with open(caminho_musica_temp, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        st.success(f"Música '{uploaded_file.name}' carregada!")
+
+st.divider()
+
+# --- 3. PRODUÇÃO ---
+st.header("3️⃣ Produção")
+pasta_entrada = "videos_baixados"
+
+# Verifica fila de vídeos
+qtd = 0
+if os.path.exists(pasta_entrada):
+    qtd = len([f for f in os.listdir(pasta_entrada) if f.endswith(('.mp4','.webm','.mkv'))])
+
+if qtd > 0:
+    st.success(f"🎬 **{qtd}** vídeos na fila de espera.")
+else:
+    st.warning("💤 Fila vazia. O Espião (Telegram) ainda não baixou nada novo.")
+
+if st.button("🚀 INICIAR PRODUÇÃO", type="primary"):
+    if qtd == 0:
+        st.error("Sem vídeos para editar!")
     else:
-        opts['default_search'] = 'ytsearch5'
-    return opts
-
-# --- 📂 INTERFACE ---
-st.sidebar.header("Avatar & Áudio")
-tipo_avatar = st.sidebar.radio("Avatar:", ["Padrão", "Upload"], horizontal=True)
-arquivo_avatar_final = "avatar/boneco.png" if tipo_avatar == "Padrão" and os.path.exists("avatar/boneco.png") else None
-
-if tipo_avatar == "Upload":
-    up_av = st.sidebar.file_uploader("Img Avatar", type=["png"])
-    if up_av:
-        t = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-        t.write(up_av.read())
-        arquivo_avatar_final = t.name
-
-st.sidebar.markdown("---")
-tipo_audio = st.sidebar.radio("Áudio:", ["Padrão", "Upload", "Voz IA"])
-arquivo_audio_final = "audios_narrecao/narracao_vendas.mp3" if tipo_audio == "Padrão" and os.path.exists("audios_narrecao/narracao_vendas.mp3") else None
-
-if tipo_audio == "Upload":
-    up_au = st.sidebar.file_uploader("Audio MP3", type=["mp3"])
-    if up_au:
-        t = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-        t.write(up_au.read())
-        arquivo_audio_final = t.name
-
-if tipo_audio == "Voz IA":
-    txt = st.sidebar.text_area("Texto:", "Produto top!")
-    if st.sidebar.button("🎙️ Gerar Voz"):
-        try:
-            t = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-            asyncio.run(gerar_voz_antonio(txt, t.name))
-            st.session_state['audio_gerado_path'] = t.name
-            st.rerun()
-        except Exception as e: st.error(e)
-    
-    if st.session_state['audio_gerado_path']:
-        st.sidebar.audio(st.session_state['audio_gerado_path'])
-        arquivo_audio_final = st.session_state['audio_gerado_path']
-
-# --- ABAS ---
-aba_manual, aba_auto = st.tabs(["Manual", "Automático (Cookies 🍪)"])
-
-with aba_manual:
-    v_up = st.file_uploader("Vídeo", type=["mp4"])
-    if st.button("🚀 Processar") and v_up and arquivo_avatar_final and arquivo_audio_final:
-        t = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-        t.write(v_up.read())
-        res = processar_video_viral(t.name, arquivo_audio_final, arquivo_avatar_final)
-        if res: st.video(res)
-
-with aba_auto:
-    st.header("Caçador com Cookies")
-    
-    # Aviso visual se o cookie foi carregado
-    if os.path.exists('cookies.txt'):
-        st.success("🍪 Arquivo de Cookies detectado! Modo desbloqueado ativo.", icon="✅")
-    else:
-        st.warning("⚠️ 'cookies.txt' não encontrado. O YouTube pode bloquear o download.", icon="🚨")
-
-    termo = st.text_input("Produto")
-    if st.button("🎲 Sortear") and termo and arquivo_avatar_final and arquivo_audio_final:
-        st.info(f"🔎 Buscando: {termo} review...")
+        # 1. Salva as configurações para o editor.py ler
+        dados_config = {
+            "texto": novo_roteiro,
+            "volume": volume_real,
+            "modo_musica": "upload" if modo_musica.startswith("📤") else "aleatorio",
+            "caminho_musica_custom": caminho_musica_temp
+        }
         
-        if not os.path.exists("downloads"): os.makedirs("downloads")
+        with open("config_temp.json", "w", encoding="utf-8") as f:
+            json.dump(dados_config, f, indent=4)
         
-        try:
-            # 1. Busca
-            lista = []
-            with yt_dlp.YoutubeDL(get_ydl_opts(download=False)) as ydl:
-                info = ydl.extract_info(f"{termo} review", download=False)
-                if 'entries' in info:
-                    for v in info['entries']:
-                        if v and v.get('duration') and v['duration'] < 180:
-                            lista.append(v)
+        # 2. Roda o Editor
+        status = st.status("🤖 O Robô está trabalhando...", expanded=True)
+        status.write("⏳ Iniciando motor de edição...")
+        
+        processo = subprocess.run(["python", "editor.py"], capture_output=True, text=True)
+        
+        # 3. Verifica resultado
+        if processo.returncode == 0:
+            status.update(label="✅ Sucesso! Vídeos gerados.", state="complete", expanded=False)
+            st.success("Processamento concluído!")
             
-            # 2. Download e Processamento
-            if lista:
-                escolhido = random.choice(lista)
-                st.success(f"Vídeo: {escolhido.get('title')}")
-                path_down = f"downloads/{escolhido['id']}.mp4"
-                
-                if not os.path.exists(path_down):
-                    # Tenta baixar usando os cookies configurados
-                    with yt_dlp.YoutubeDL(get_ydl_opts(download=True, output_path=path_down)) as ydl:
-                        ydl.download([escolhido['webpage_url']])
-                
-                if os.path.exists(path_down):
-                    res = processar_video_viral(path_down, arquivo_audio_final, arquivo_avatar_final)
-                    if res: st.video(res)
-            else:
-                st.warning("Nada encontrado.")
-        except Exception as e:
-            st.error(f"Erro no download: {e}")
+            # Limpa arquivo temporário de música se usou upload
+            if caminho_musica_temp and os.path.exists(caminho_musica_temp):
+                try: os.remove(caminho_musica_temp)
+                except: pass
+            
+            time.sleep(1)
+            st.rerun() # Atualiza a página
+        else:
+            status.update(label="❌ Erro Fatal", state="error")
+            st.error("Ocorreu um erro no editor.py:")
+            st.code(processo.stderr)
+            st.text("Log de saída:")
+            st.text(processo.stdout)
+
+st.divider()
+
+# --- 4. GALERIA ---
+st.header("📂 Vídeos Finalizados")
+pasta_saida = "videos_finalizados"
+
+if os.path.exists(pasta_saida):
+    videos = [f for f in os.listdir(pasta_saida) if f.endswith(".mp4")]
+    # Ordena por mais recente
+    videos.sort(key=lambda x: os.path.getmtime(os.path.join(pasta_saida, x)), reverse=True)
+    
+    if not videos:
+        st.info("Nenhum vídeo pronto ainda.")
+        
+    for v in videos:
+        caminho_completo = os.path.join(pasta_saida, v)
+        
+        # Layout: Vídeo na esquerda, Botão na direita
+        col_v, col_b = st.columns([0.7, 0.3])
+        
+        with col_v:
+            st.subheader(f"📺 {v}")
+            st.video(caminho_completo)
+            
+        with col_b:
+            st.write(" ")
+            st.write(" ")
+            st.write(" ")
+            with open(caminho_completo, "rb") as file:
+                st.download_button(
+                    label="⬇️ BAIXAR",
+                    data=file,
+                    file_name=v,
+                    mime="video/mp4"
+                )
+        st.divider()
+else:
+    st.warning("A pasta de saída ainda não foi criada.")
